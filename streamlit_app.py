@@ -2,7 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import requests
 
-# 1. UI Configuration (Clean & Minimal)
+# 1. UI Configuration
 st.set_page_config(page_title="ArtHeal", page_icon="🎨", layout="centered")
 
 st.markdown("""
@@ -52,39 +52,46 @@ with col_b:
 # 5. The Logic
 if submit and user_input:
     try:
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # GROUNDED PROMPT: Focus on Art History Facts & Process
+        # STRICT PROMPT: No more placeholders.
         prompt = f"""
         User input: {user_input}
-        Role: Fact-based Art Historian.
-        Task: Map the user's emotion to a REAL European painting and its historical context.
+        Role: Expert Art Historian & Empath.
         
-        Provide the following exactly:
-        - Emotion: [1 word]
-        - Artist: [Name]
-        - Painting: [Title]
-        - Before: [The real-life struggle or event that led the artist to start this]
-        - During: [A specific technique or detail about the making process]
-        - After: [The result for the artist or society]
-        - Activity: [A 1-sentence actionable task]
-
-        Format: Emotion|Artist|Painting|Before|During|After|Activity
+        Instruction: 
+        1. Find a REAL famous European painting that mirrors this emotion.
+        2. Describe the actual historical 'Spark' (intent), the 'Creation' (technique used), and 'Impact' (aftermath).
+        3. Do NOT use the words 'Before', 'During', or 'After' as the content. Provide rich, crisp descriptions.
+        
+        Return exactly this format:
+        Emotion: [1 word]
+        Artist: [Name]
+        Painting: [Full Title]
+        Spark: [Real historical context of why it was made]
+        Creation: [Specific artistic detail or process used]
+        Impact: [How it affected the artist or society]
+        Activity: [One simple, verb-led task for the user]
+        
+        Format parts separated by the '|' character.
         """
         
-        with st.spinner("Consulting history..."):
+        with st.spinner("Consulting the archives..."):
             response = model.generate_content(prompt)
-            p = [part.strip() for part in response.text.split('|')]
+            # Split by pipe and strip whitespace/newlines
+            p = [part.strip() for part in response.text.replace('\n', '').split('|')]
             
-            if len(p) >= 7:
-                st.markdown(f"#### I hear your **{p[0].lower()}**.")
+            # Cleaning labels from the AI response if it included them
+            clean_p = [part.split(':')[-1].strip() for part in p]
+
+            if len(clean_p) >= 7:
+                st.markdown(f"#### I hear your **{clean_p[0].lower()}**.")
                 
-                # Content Display (No Container Box)
-                st.subheader(p[2])
-                st.caption(f"By {p[1]}")
+                st.subheader(clean_p[2])
+                st.caption(f"By {clean_p[1]}")
                 
                 # Image Search
-                search_term = f"{p[2]} {p[1]}"
+                search_term = f"{clean_p[2]} {clean_p[1]}"
                 search_url = f"https://collectionapi.metmuseum.org/public/collection/v1/search?q={search_term}"
                 search_res = requests.get(search_url).json()
                 if search_res.get('total', 0) > 0:
@@ -93,15 +100,15 @@ if submit and user_input:
                     if obj_data.get('primaryImageSmall'):
                         st.image(obj_data['primaryImageSmall'], use_container_width=True)
 
-                # Crisp Process Breakdown
+                # Process Breakdown
                 st.markdown(f'<p class="blue-label">The Process</p>', unsafe_allow_html=True)
-                st.markdown(f"**The Spark:** {p[3]}")
-                st.markdown(f"**The Creation:** {p[4]}")
-                st.markdown(f"**The Impact:** {p[5]}")
+                st.markdown(f"**The Spark:** {clean_p[3]}")
+                st.markdown(f"**The Creation:** {clean_p[4]}")
+                st.markdown(f"**The Impact:** {clean_p[5]}")
                 
                 # Activity
                 st.markdown(f'<p class="blue-label">Your Reflection</p>', unsafe_allow_html=True)
-                st.markdown(f'<div class="activity-box"><b>Try this:</b> {p[6]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="activity-box"><b>Try this:</b> {clean_p[6]}</div>', unsafe_allow_html=True)
 
     except Exception as e:
         st.error("The archives are quiet. Try a different thought!")
