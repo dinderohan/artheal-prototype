@@ -2,75 +2,103 @@ import streamlit as st
 import google.generativeai as genai
 import requests
 
-# 1. UI Setup
-st.set_page_config(page_title="ArtHeal MVP", page_icon="🎨", layout="centered")
-st.title("🎨 ArtHeal: Reflection through History")
-st.markdown("### How are you feeling today?")
+# 1. Page Config & Professional UI Styling
+st.set_page_config(page_title="ArtHeal", page_icon="🎨", layout="centered")
 
-# 2. Sidebar for API Key
-with st.sidebar:
-    st.header("Settings")
-    api_key = st.text_input("Paste Gemini API Key", type="password")
-    st.info("Get your key from Google AI Studio")
+st.markdown("""
+    <style>
+    .main { background-color: #fcfcfc; }
+    .art-card {
+        background-color: white;
+        padding: 24px;
+        border-radius: 20px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        margin-top: 25px;
+        border: 1px solid #f0f0f0;
+    }
+    .label { 
+        color: #999; 
+        font-size: 0.75rem; 
+        font-weight: 700; 
+        text-transform: uppercase; 
+        letter-spacing: 1px;
+        margin-top: 15px; 
+        margin-bottom: 5px;
+    }
+    .stTextArea textarea {
+        border-radius: 12px;
+        border: 1px solid #eee;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-# 3. Main User Input
-user_input = st.text_area("Talk to me about what's on your mind...", 
-                          placeholder="e.g., I'm feeling like a lone wolf designer on my team...", 
-                          height=150)
+# 2. Secret Key Logic (One Key for All)
+try:
+    # This looks for the key you just pasted in the Streamlit Secrets vault
+    API_KEY = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=API_KEY)
+except Exception as e:
+    st.error("Missing API Key. Please add 'GEMINI_API_KEY' to Streamlit Secrets.")
+    st.stop()
 
-if st.button("Find My Reflection"):
-    if not api_key:
-        st.error("Please paste your API key in the sidebar first!")
-    elif not user_input:
-        st.warning("Please tell me a bit about your feelings first.")
-    else:
+# 3. Main App Header
+st.title("🎨 ArtHeal")
+st.write("Share your thoughts. Find a reflection in history.")
+
+# 4. Input Area
+user_input = st.text_area("", placeholder="How is your heart today?", height=150, label_visibility="collapsed")
+
+# 5. Action Button
+if st.button("Consult the Archives", use_container_width=True):
+    if user_input:
         try:
-            genai.configure(api_key=api_key)
-            # Using 2.5 Flash - the current most stable/cost-effective model
+            # Using the stable 2.5 Flash model
             model = genai.GenerativeModel('gemini-2.5-flash')
             
             prompt = f"""
             User Statement: {user_input}
-            You are an empathetic Art Historian. 
-            1. Identify the core emotion.
-            2. Map it to a specific European artist/movement that faced a similar struggle.
-            3. Provide a practical activity to release that emotion.
-            
-            Format your response EXACTLY like this:
-            Emotion: [Name]
-            Artist: [Artist Name]
-            Painting: [Exact Painting Title]
-            The Story: [2-3 sentences on the artist's struggle and how this work helped them]
-            Activity: [One simple, practical creative task]
+            Role: Empathetic Art Historian. 
+            Task: Identify the emotion, suggest one specific European painting, 
+            explain the artist's struggle in 2-3 sentences, and suggest one creative task.
+            Return format: Emotion | Artist | Painting | Story | Activity
             """
             
-            with st.spinner("Consulting the archives..."):
+            with st.spinner("Searching the archives..."):
                 response = model.generate_content(prompt)
-                res_text = response.text
+                # Parse the response safely
+                parts = [p.strip() for p in response.text.split('|')]
                 
-                # Split the text into parts to show it nicely
-                st.divider()
-                st.markdown(res_text)
+                if len(parts) >= 5:
+                    emotion, artist, painting, story, activity = parts[0:5]
 
-                # 4. Search for the Artwork Image (The Met Museum)
-                try:
-                    # Clean up the painting name for searching
-                    painting_title = res_text.split("Painting:")[1].split("\n")[0].strip()
-                    search_url = f"https://collectionapi.metmuseum.org/public/collection/v1/search?q={painting_title}"
-                    search_req = requests.get(search_url).json()
+                    # THE REVEAL
+                    st.markdown(f"### I sense a feeling of **{emotion.lower()}**.")
                     
-                    if search_req.get('total', 0) > 0:
-                        obj_id = search_req['objectIDs'][0]
-                        obj_data = requests.get(f"https://collectionapi.metmuseum.org/public/collection/v1/objects/{obj_id}").json()
-                        img_url = obj_data.get('primaryImageSmall')
+                    with st.container():
+                        st.markdown('<div class="art-card">', unsafe_allow_html=True)
+                        st.subheader(painting)
+                        st.caption(f"By {artist}")
                         
-                        if img_url:
-                            st.image(img_url, caption=f"{painting_title}")
-                        else:
-                            st.info("I found the history, but couldn't find a public-domain image for this specific piece.")
-                except Exception as img_err:
-                    st.write("*(Note: Found the story, but had trouble loading the visual. Focus on the activity above!)*")
+                        # Image Fetching (The Met Museum API)
+                        try:
+                            search_url = f"https://collectionapi.metmuseum.org/public/collection/v1/search?q={painting}"
+                            search_res = requests.get(search_url).json()
+                            if search_res.get('total', 0) > 0:
+                                obj_id = search_res['objectIDs'][0]
+                                obj_data = requests.get(f"https://collectionapi.metmuseum.org/public/collection/v1/objects/{obj_id}").json()
+                                st.image(obj_data.get('primaryImageSmall'), use_container_width=True)
+                        except:
+                            st.info("Story found, but the image is resting in the vault.")
+
+                        st.markdown(f'<p class="label">The Artist\'s Struggle</p><p>{story}</p>', unsafe_allow_html=True)
+                        st.markdown(f'<p class="label">Reflective Activity</p><p>{activity}</p>', unsafe_allow_html=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    # Secondary Action
+                    if st.button("New Reflection"):
+                        st.rerun()
 
         except Exception as e:
-            st.error(f"Something went wrong: {str(e)}")
-            st.info("Check your API key or try again in a moment.")
+            st.error("The archives are quiet. Try a different thought!")
+    else:
+        st.warning("Please share a thought first.")
