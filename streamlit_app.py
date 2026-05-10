@@ -17,7 +17,7 @@ st.markdown("""
         border: 1px solid #f2f2f2;
     }
     .label { 
-        color: #A0A0A0; 
+        color: #1A56BE; 
         font-size: 0.7rem; 
         font-weight: 800; 
         text-transform: uppercase; 
@@ -25,10 +25,18 @@ st.markdown("""
         margin-top: 20px; 
         margin-bottom: 8px;
     }
+    .insight-box {
+        background-color: #f0f4f8;
+        padding: 15px;
+        border-radius: 12px;
+        margin-top: 10px;
+        font-style: italic;
+        color: #334e68;
+    }
     .activity-box {
         background-color: #f8faff;
         padding: 15px;
-        border-left: 4px solid #4A90E2;
+        border-left: 4px solid #1A56BE;
         border-radius: 8px;
         margin-top: 10px;
     }
@@ -43,9 +51,8 @@ except:
     st.error("API Key missing in Secrets!")
     st.stop()
 
-# --- NEW FALLBACK LOGIC FUNCTION ---
+# Helper: Dual Search Logic (Wikipedia + Met)
 def fetch_art_image(painting, artist):
-    # Try Wikipedia first (Great for global/European works)
     try:
         wiki_url = f"https://en.wikipedia.org/w/api.php?action=query&titles={painting}&prop=pageimages&format=json&pithumbsize=800"
         res = requests.get(wiki_url).json()
@@ -54,8 +61,6 @@ def fetch_art_image(painting, artist):
             if "thumbnail" in pages[pg]:
                 return pages[pg]["thumbnail"]["source"]
     except: pass
-    
-    # Fallback to The Met API
     try:
         search_term = f"{painting} {artist}"
         met_res = requests.get(f"https://collectionapi.metmuseum.org/public/collection/v1/search?q={search_term}").json()
@@ -64,7 +69,6 @@ def fetch_art_image(painting, artist):
             obj_data = requests.get(f"https://collectionapi.metmuseum.org/public/collection/v1/objects/{obj_id}").json()
             return obj_data.get('primaryImageSmall')
     except: return None
-# -----------------------------------
 
 st.title("🎨 ArtHeal")
 st.write("Share your heart. Find your reflection.")
@@ -76,53 +80,60 @@ if st.button("Consult the Archives", use_container_width=True):
         try:
             model = genai.GenerativeModel('gemini-2.5-flash')
             
+            # REFINED PROMPT: Shifting to Therapeutic Insight
             prompt = f"""
             User: {user_input}
-            Role: Art Historian & Empath.
-            Output: Identify the emotion, one European painting, the artist's struggle story, and a clear step-by-step activity.
+            Role: Art Therapist. 
+            Instruction: Provide deep emotional validation and link it to a REAL painting.
             
             Return format exactly like this:
             EMOTION: [1 word]
+            VALIDATION: [One sentence validating why the user feels this way]
             ARTIST: [Name]
             PAINTING: [Exact Title]
-            STORY_TITLE: [A 3-4 word title for the artist's struggle]
-            STORY_BODY: [2 sentences on how the artist used this work to overcome the emotion]
-            ACTIVITY_TITLE: [A short title for the action]
-            ACTIVITY_BODY: [One specific, practical instruction starting with a verb]
+            METAPHOR: [Identify ONE specific visual detail in the art—a color, a line, or a shadow—and explain how it represents the user's specific struggle]
+            STORY_BODY: [2 sentences on the artist's real historical struggle]
+            ACTIVITY_BODY: [One specific, sensory task starting with a verb]
+            QUESTION: [One deep reflective question to leave the user with]
             """
             
-            with st.spinner("Searching art history..."):
+            with st.spinner("Consulting the archives..."):
                 response = model.generate_content(prompt)
                 lines = response.text.split('\n')
                 data = {l.split(':')[0].strip(): l.split(':')[1].strip() for l in lines if ':' in l}
 
-                # 3. The Visual Reveal
-                st.markdown(f"### I sense a feeling of **{data['EMOTION'].lower()}**.")
+                # 3. The Therapeutic Flow
+                st.markdown(f"### {data['VALIDATION']}")
                 
                 with st.container():
                     st.markdown('<div class="art-card">', unsafe_allow_html=True)
                     st.subheader(data['PAINTING'])
                     st.caption(f"By {data['ARTIST']}")
                     
-                    # UPDATED IMAGE LOGIC
+                    # Image Logic
                     img_url = fetch_art_image(data['PAINTING'], data['ARTIST'])
                     if img_url:
                         st.image(img_url, use_container_width=True)
-                    else:
-                        st.info("Found the history, but the visual remains in the archives. Visualize the brushstrokes in your mind.")
+                    
+                    # Insight Section
+                    st.markdown(f'<p class="label">The Visual Metaphor</p>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="insight-box">{data["METAPHOR"]}</div>', unsafe_allow_html=True)
                     
                     # Story Section
-                    st.markdown(f'<p class="label">{data["STORY_TITLE"]}</p>', unsafe_allow_html=True)
+                    st.markdown(f'<p class="label">The Artist\'s Journey</p>', unsafe_allow_html=True)
                     st.write(data['STORY_BODY'])
                     
                     # Activity Section
-                    st.markdown(f'<p class="label">Your Personal Activity</p>', unsafe_allow_html=True)
+                    st.markdown(f'<p class="label">A Somatic Action</p>', unsafe_allow_html=True)
                     st.markdown(f"""
                         <div class="activity-box">
-                            <strong>{data['ACTIVITY_TITLE']}</strong><br>
+                            <strong>Your Task:</strong><br>
                             {data['ACTIVITY_BODY']}
                         </div>
                     """, unsafe_allow_html=True)
+
+                    st.divider()
+                    st.markdown(f"**Reflection:** {data['QUESTION']}")
                     
                     st.markdown('</div>', unsafe_allow_html=True)
 
