@@ -2,60 +2,50 @@ import streamlit as st
 import google.generativeai as genai
 import requests
 
-# 1. UI Configuration & Professional Styling
+# 1. Page Config & Professional UI Styling
 st.set_page_config(page_title="ArtHeal", page_icon="🎨", layout="centered")
 
-# WCAG AA Compliant Blue: #1A56BE
 st.markdown("""
     <style>
-    .sticky-nav {
-        position: fixed; top: 0; left: 0; width: 100%;
-        background: var(--background-color); padding: 10px 20px;
-        display: flex; justify-content: space-between; align-items: center;
-        border-bottom: 1px solid rgba(128, 128, 128, 0.2); z-index: 9999;
+    .main { background-color: #fcfcfc; }
+    .art-card {
+        background-color: white;
+        padding: 24px;
+        border-radius: 24px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.04);
+        margin-top: 20px;
+        border: 1px solid #f2f2f2;
     }
-    .blue-label { 
-        color: #1A56BE; font-size: 0.75rem; font-weight: 800; 
-        text-transform: uppercase; letter-spacing: 1.2px;
-        margin-top: 25px; margin-bottom: 5px;
+    .label { 
+        color: #A0A0A0; 
+        font-size: 0.7rem; 
+        font-weight: 800; 
+        text-transform: uppercase; 
+        letter-spacing: 1.5px;
+        margin-top: 20px; 
+        margin-bottom: 8px;
     }
     .activity-box {
-        background-color: rgba(26, 86, 190, 0.05);
-        padding: 15px; border-left: 4px solid #1A56BE;
-        border-radius: 8px; margin-top: 10px;
+        background-color: #f8faff;
+        padding: 15px;
+        border-left: 4px solid #4A90E2;
+        border-radius: 8px;
+        margin-top: 10px;
     }
-    .main-content { margin-top: 70px; }
-    
-    /* Ensure image doesn't overflow on mobile */
-    img { border-radius: 12px; max-width: 100%; height: auto; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Key Check (using Streamlit Secrets)
+# 2. Key Check
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
-except Exception:
-    st.error("API Key missing in Secrets! Check your Streamlit Cloud settings.")
+except:
+    st.error("API Key missing in Secrets!")
     st.stop()
 
-# 3. Sticky Header
-st.markdown('<div class="sticky-nav"><span style="font-weight:700; font-size:1.2rem;">🎨 ArtHeal</span></div>', unsafe_allow_html=True)
-st.markdown('<div class="main-content"></div>', unsafe_allow_html=True)
-
-# 4. Input Flow
-user_input = st.text_area("", placeholder="How is your heart today?", height=120, label_visibility="collapsed")
-
-col_a, col_b = st.columns([0.7, 0.3])
-with col_a:
-    submit = st.button("Consult the Archives", use_container_width=True, type="primary")
-with col_b:
-    if st.button("New Chat", use_container_width=True):
-        st.rerun()
-
-# 5. Helper Function: Global Art Search (Wikipedia + The Met)
+# --- NEW FALLBACK LOGIC FUNCTION ---
 def fetch_art_image(painting, artist):
-    # Try Wikipedia first (Great for global/European works like Munch, Van Gogh)
+    # Try Wikipedia first (Great for global/European works)
     try:
         wiki_url = f"https://en.wikipedia.org/w/api.php?action=query&titles={painting}&prop=pageimages&format=json&pithumbsize=800"
         res = requests.get(wiki_url).json()
@@ -68,62 +58,73 @@ def fetch_art_image(painting, artist):
     # Fallback to The Met API
     try:
         search_term = f"{painting} {artist}"
-        met_search = requests.get(f"https://collectionapi.metmuseum.org/public/collection/v1/search?q={search_term}").json()
-        if met_search.get('total', 0) > 0:
-            obj_id = met_search['objectIDs'][0]
+        met_res = requests.get(f"https://collectionapi.metmuseum.org/public/collection/v1/search?q={search_term}").json()
+        if met_res.get('total', 0) > 0:
+            obj_id = met_res['objectIDs'][0]
             obj_data = requests.get(f"https://collectionapi.metmuseum.org/public/collection/v1/objects/{obj_id}").json()
             return obj_data.get('primaryImageSmall')
     except: return None
+# -----------------------------------
 
-# 6. Execution Logic
-if submit and user_input:
-    try:
-        # Use 1.5 Flash for speed and strict formatting
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        prompt = f"""
-        User input: {user_input}
-        Role: Expert Art Historian. Map the emotion to a REAL famous European painting.
-        
-        Strict Requirements:
-        - Identify the real historical context (Spark/Before), the actual technique used (Creation/During), and the aftermath (Impact/After). 
-        - Do NOT hallucinate. Use only verified historical facts.
-        - The activity must be a simple, actionable 1-sentence physical task.
-        
-        Return exactly this format:
-        Emotion | Artist | Painting | The Spark | The Creation | The Impact | Activity
-        """
-        
-        with st.spinner("Consulting history..."):
-            response = model.generate_content(prompt)
-            data = [part.strip() for part in response.text.split('|')]
+st.title("🎨 ArtHeal")
+st.write("Share your heart. Find your reflection.")
+
+user_input = st.text_area("", placeholder="What's on your mind?", height=120, label_visibility="collapsed")
+
+if st.button("Consult the Archives", use_container_width=True):
+    if user_input:
+        try:
+            model = genai.GenerativeModel('gemini-2.5-flash')
             
-            if len(data) >= 7:
-                emotion, artist, painting, spark, creation, impact, activity = data[0:7]
-                
-                # Visual Reveal
-                st.markdown(f"#### I hear your **{emotion.lower()}**.")
-                
-                # The Content Block (No empty container, renders on demand)
-                st.subheader(painting)
-                st.caption(f"By {artist}")
-                
-                # Image Display
-                img_url = fetch_art_image(painting, artist)
-                if img_url:
-                    st.image(img_url, use_container_width=True)
-                else:
-                    st.info("Found the history, but the visual remains in the Oslo archives. Visualize the brushstrokes in your mind.")
+            prompt = f"""
+            User: {user_input}
+            Role: Art Historian & Empath.
+            Output: Identify the emotion, one European painting, the artist's struggle story, and a clear step-by-step activity.
+            
+            Return format exactly like this:
+            EMOTION: [1 word]
+            ARTIST: [Name]
+            PAINTING: [Exact Title]
+            STORY_TITLE: [A 3-4 word title for the artist's struggle]
+            STORY_BODY: [2 sentences on how the artist used this work to overcome the emotion]
+            ACTIVITY_TITLE: [A short title for the action]
+            ACTIVITY_BODY: [One specific, practical instruction starting with a verb]
+            """
+            
+            with st.spinner("Searching art history..."):
+                response = model.generate_content(prompt)
+                lines = response.text.split('\n')
+                data = {l.split(':')[0].strip(): l.split(':')[1].strip() for l in lines if ':' in l}
 
-                # The Factual Process
-                st.markdown('<p class="blue-label">The Process</p>', unsafe_allow_html=True)
-                st.markdown(f"**The Spark:** {spark}")
-                st.markdown(f"**The Creation:** {creation}")
-                st.markdown(f"**The Impact:** {impact}")
+                # 3. The Visual Reveal
+                st.markdown(f"### I sense a feeling of **{data['EMOTION'].lower()}**.")
                 
-                # The Task
-                st.markdown('<p class="blue-label">Reflective Activity</p>', unsafe_allow_html=True)
-                st.markdown(f'<div class="activity-box"><b>Try this:</b> {activity}</div>', unsafe_allow_html=True)
+                with st.container():
+                    st.markdown('<div class="art-card">', unsafe_allow_html=True)
+                    st.subheader(data['PAINTING'])
+                    st.caption(f"By {data['ARTIST']}")
+                    
+                    # UPDATED IMAGE LOGIC
+                    img_url = fetch_art_image(data['PAINTING'], data['ARTIST'])
+                    if img_url:
+                        st.image(img_url, use_container_width=True)
+                    else:
+                        st.info("Found the history, but the visual remains in the archives. Visualize the brushstrokes in your mind.")
+                    
+                    # Story Section
+                    st.markdown(f'<p class="label">{data["STORY_TITLE"]}</p>', unsafe_allow_html=True)
+                    st.write(data['STORY_BODY'])
+                    
+                    # Activity Section
+                    st.markdown(f'<p class="label">Your Personal Activity</p>', unsafe_allow_html=True)
+                    st.markdown(f"""
+                        <div class="activity-box">
+                            <strong>{data['ACTIVITY_TITLE']}</strong><br>
+                            {data['ACTIVITY_BODY']}
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
 
-    except Exception as e:
-        st.error("The archives are currently quiet. Try expressing a different thought.")
+        except Exception as e:
+            st.error("The archives are quiet. Try a different thought!")
